@@ -131,3 +131,29 @@ class TaskRead(TaskBase):
     id: int
     case_id: int
     created_at: datetime
+
+
+class DefenseDossierParty(SQLModel):
+    id: int
+    name: str
+    role: str
+    contact_email: Optional[str] = None
+
+
+class DefenseDossierDocument(SQLModel):
+    id: int
+    filename: str
+    content_type: str
+    description: Optional[str] = None
+    uploaded_at: datetime
+
+
+class DefenseDossier(SQLModel):
+    case_id: int
+    generated_at: datetime
+    case_title: str
+    case_status: str
+    jurisdiction: Optional[str] = None
+    parties: List[DefenseDossierParty] = Field(default_factory=list)
+    documents: List[DefenseDossierDocument] = Field(default_factory=list)
+    notes: Optional[str] = None

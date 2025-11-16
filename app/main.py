@@ -11,6 +11,9 @@ from .models import (
     CaseCreate,
     CaseRead,
     CaseUpdate,
+    DefenseDossier,
+    DefenseDossierDocument,
+    DefenseDossierParty,
     Document,
     DocumentCreate,
     DocumentRead,
@@ -202,6 +205,58 @@ async def upload_document_file(
     await session.commit()
     await session.refresh(document)
     return document
+
+
+@app.get("/cases/{case_id}/defense-dossier", response_model=DefenseDossier)
+async def build_defense_dossier(
+    case_id: int, session: AsyncSession = Depends(get_session)
+) -> DefenseDossier:
+    case = await session.get(Case, case_id)
+    if not case:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Case not found")
+
+    parties_result = await session.exec(select(Party).where(Party.case_id == case_id))
+    documents_result = await session.exec(
+        select(Document).where(Document.case_id == case_id).order_by(Document.uploaded_at)
+    )
+
+    party_summaries = [
+        DefenseDossierParty(
+            id=party.id,
+            name=party.name,
+            role=party.role,
+            contact_email=party.contact_email,
+        )
+        for party in parties_result.all()
+    ]
+
+    document_summaries = [
+        DefenseDossierDocument(
+            id=document.id,
+            filename=document.filename,
+            content_type=document.content_type,
+            description=document.description,
+            uploaded_at=document.uploaded_at,
+        )
+        for document in documents_result.all()
+    ]
+
+    notes = (
+        "Dossier automatique généré à partir des documents fournis."
+        if document_summaries
+        else "Aucun document fourni pour ce dossier pour le moment."
+    )
+
+    return DefenseDossier(
+        case_id=case.id,
+        generated_at=datetime.utcnow(),
+        case_title=case.title,
+        case_status=case.status,
+        jurisdiction=case.jurisdiction,
+        parties=party_summaries,
+        documents=document_summaries,
+        notes=notes,
+    )
 
 
 @app.get("/health", status_code=status.HTTP_200_OK)
