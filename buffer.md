@@ -17,35 +17,35 @@ flowchart TB
         C[Client interne / Administration]
     end
 
-    C -->|Transmet dossier, pièces, objectifs| UI[Portail web\nMémoire en défense]
+    C -->|Transmet dossier, pièces, objectifs| UI[Portail web<br/>Mémoire en défense]
 
-    UI -->|Formulaire structuré\n(identité, faits, demandes)| S1[Intake Dossier\n& Normalisation]
-    UI -->|Upload pièces (PDF, DOCX)| S2[Gestion documentaire\n& OCR]
+    UI -->|Formulaire structuré<br/>(identité, faits, demandes)| S1[Intake Dossier<br/>& Normalisation]
+    UI -->|Upload pièces (PDF, DOCX)| S2[Gestion documentaire<br/>& OCR]
 
     S1 --> S3[Pré-analyse automatique\n(NLP + extraction de faits)]
     S2 --> S3
 
-    S3 --> S4[Classification du litige\n(type, juridiction, matière)]
-    S4 --> S5[Suggestion de plan\n& squelette de mémoire]
+    S3 --> S4[Classification du litige<br/>(type, juridiction, matière)]
+    S4 --> S5[Suggestion de plan<br/>& squelette de mémoire]
 
-    S5 --> J_UI[Interface juriste\n(éditeur structuré)]
+    S5 --> J_UI[Interface juriste<br/>(éditeur structuré)]
     J -->|Valide / ajuste plan| J_UI
 
-    J_UI -->|Demande 1er brouillon| S6[Génération de brouillon\n(LLM + modèles types)]
-    S6 --> S7[Recherche jurisprudence\n& doctrine (RAG)]
+    J_UI -->|Demande 1er brouillon| S6[Génération de brouillon<br/>(LLM + modèles types)]
+    S6 --> S7[Recherche jurisprudence<br/>& doctrine (RAG)]
     S7 --> S6
 
-    S6 --> J_UI2[Interface juriste\nBrouillon annotable]
-    J -->|Révisions, ajouts de moyens,\nréécriture humaine| J_UI2
+    S6 --> J_UI2[Interface juriste<br/>Brouillon annotable]
+    J -->|Révisions, ajouts de moyens,<br/>réécriture humaine| J_UI2
 
-    J_UI2 --> S8[Contrôles automatiques\n(cohérence, mentions obligatoires,\nréférences de pièces)]
+    J_UI2 --> S8[Contrôles automatiques<br/>(cohérence, mentions obligatoires,<br/>références de pièces)]
     S8 -->|Rapport de contrôle| J_UI2
 
     J_UI2 -->|Soumettre pour finalisation| S9[Validation finale\n& génération PDF/Word]
-    S9 --> ARCH[Archivage dossier\n& indexation interne]
+    S9 --> ARCH[Archivage dossier<br/>& indexation interne]
     S9 --> C_OUT[Transmission au greffe / adversaire]
 
-    ARCH --> ANALYTICS[Statistiques, réutilisation\nmodèles, retour d’expérience]
+    ARCH --> ANALYTICS[Statistiques, réutilisation<br/>modèles, retour d’expérience]
 ```
 
 ---
@@ -57,25 +57,25 @@ Chaque bloc = idéalement un microservice conteneurisé.
 ```mermaid
 flowchart LR
     subgraph Client
-        FE[Frontend Web\n(React/Vue + éditeur riche)]
+        FE[Frontend Web<br/>(React/Vue + éditeur riche)]
     end
 
     subgraph Edge
-        APIGW[API Gateway\n+ Auth (OIDC/SAML)]
+        APIGW[API Gateway<br/>+ Auth (OIDC/SAML)]
         WAF[WAF / Reverse Proxy]
     end
 
     FE --> WAF --> APIGW
 
     subgraph Backend["Backend applicatif (Kubernetes, etc.)"]
-        DIR[Intake Service\n(dossier & formulaires)]
-        DMS[Document Management\n+ OCR/Extraction]
-        NLP[Service NLP\n(extraction de faits,\nclassification, NER)]
-        PLAN[Service Plan & Templates\n(règles + modèles types)]
-        LLM_ORCH[Orchestrateur LLM\n(prompting, garde-fous,\nappels modèles)]
-        RAG[Service Jurisprudence RAG\n(recherche & ranking)]
-        QA[Service Qualité\n & Contrôles automatiques]
-        EXPORT[Service Export\n(PDF/DOCX, signatures)]
+        DIR[Intake Service<br/>(dossier & formulaires)]
+        DMS[Document Management<br/>+ OCR/Extraction]
+        NLP[Service NLP<br/>(extraction de faits,<br/>classification, NER)]
+        PLAN[Service Plan & Templates<br/>(règles + modèles types)]
+        LLM_ORCH[Orchestrateur LLM<br/>(prompting, garde-fous,<br/>appels modèles)]
+        RAG[Service Jurisprudence RAG<br/>(recherche & ranking)]
+        QA[Service Qualité<br/> & Contrôles automatiques]
+        EXPORT[Service Export<br/>(PDF/DOCX, signatures)]
         AUDIT[Journalisation & Traçabilité]
     end
 
@@ -105,11 +105,11 @@ flowchart LR
     LLM_ORCH --> AUDIT
 
     subgraph Data["Stockage & données"]
-        DB_CASES[(Base dossiers\n& métadonnées)]
-        DB_DOCS[(Stockage pièces\n(Obj. Storage, index plein texte))]
-        DB_JURIS[(Base jurisprudence\n+ index vecteur)]
-        DB_CONFIG[(Modèles, templates,\nrègles métier)]
-        LOGS[(Logs, traces,\nmetrics sécurité)]
+        DB_CASES[(Base dossiers<br/>& métadonnées)]
+        DB_DOCS[(Stockage pièces<br/>(Obj. Storage, index plein texte))]
+        DB_JURIS[(Base jurisprudence<br/>+ index vecteur)]
+        DB_CONFIG[(Modèles, templates,<br/>règles métier)]
+        LOGS[(Logs, traces,<br/>metrics sécurité)]
     end
 
     DIR <---> DB_CASES
@@ -139,21 +139,21 @@ sequenceDiagram
     API->>PLAN: Générer squelette (plan + sections)
     PLAN-->>API: Squelette structuré (JSON)
 
-    API->>ORCH: Demande brouillon par section\n(avec faits + squelette)
+    API->>ORCH: Demande brouillon par section<br/>(avec faits + squelette)
     loop Sections
         ORCH->>RAG: Rechercher jurisprudence/doctrine contextuelle
         RAG-->>ORCH: Extraits + références
-        ORCH-->>ORCH: Construction de prompt\n(plan + faits + juris)
+        ORCH-->>ORCH: Construction de prompt<br/>(plan + faits + juris)
         ORCH-->>API: Texte de section proposée
     end
 
     API-->>FE: Brouillon complet (par section)
-    J->>FE: Modifications manuelles,\najout/retrait de moyens
+    J->>FE: Modifications manuelles,<br/>ajout/retrait de moyens
     FE->>API: Sauvegarde version révisée
 
     J->>FE: "Lancer contrôles"
     FE->>API: POST /quality-check
-    API->>QA: Lancer règles (mentions, pièces,\ncohérence, numérotation,…)
+    API->>QA: Lancer règles (mentions, pièces,<br/>cohérence, numérotation,…)
     QA-->>API: Rapport d’anomalies / warnings
     API-->>FE: Affichage du rapport
 
