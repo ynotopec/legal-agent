@@ -13,16 +13,16 @@ Je te propose :
 ```mermaid
 flowchart TB
     subgraph Acteurs
-        J[Juriste / Avocat]
-        C[Client interne / Administration]
+        J["Juriste / Avocat"]
+        C["Client interne / Administration"]
     end
 
     C -->|Transmet dossier, pièces, objectifs| UI["Portail web<br/>Mémoire en défense"]
 
-    UI -->|"Formulaire structuré<br/>(identité, faits, demandes)"| S1["Intake Dossier<br/>& Normalisation"]
+    UI -->|Formulaire structuré<br/>(identité, faits, demandes)| S1["Intake Dossier<br/>& Normalisation"]
     UI -->|Upload pièces (PDF, DOCX)| S2["Gestion documentaire<br/>& OCR"]
 
-    S1 --> S3[Pré-analyse automatique<br/>(NLP + extraction de faits)]
+    S1 --> S3["Pré-analyse automatique<br/>(NLP + extraction de faits)"]
     S2 --> S3
 
     S3 --> S4["Classification du litige<br/>(type, juridiction, matière)"]
@@ -36,16 +36,16 @@ flowchart TB
     S7 --> S6
 
     S6 --> J_UI2["Interface juriste<br/>Brouillon annotable"]
-    J -->|"Révisions, ajouts de moyens,<br/>réécriture humaine"| J_UI2
+    J -->|Révisions, ajouts de moyens,<br/>réécriture humaine| J_UI2
 
     J_UI2 --> S8["Contrôles automatiques<br/>(cohérence, mentions obligatoires,<br/>références de pièces)"]
     S8 -->|Rapport de contrôle| J_UI2
 
-    J_UI2 -->|Soumettre pour finalisation| S9[Validation finale<br/>& génération PDF/Word]
+    J_UI2 -->|Soumettre pour finalisation| S9["Validation finale<br/>& génération PDF/Word"]
     S9 --> ARCH["Archivage dossier<br/>& indexation interne"]
-    S9 --> C_OUT[Transmission au greffe / adversaire]
+    S9 --> C_OUT["Transmission au greffe / adversaire"]
 
-    ARCH --> ANALYTICS[Statistiques, réutilisation<br/>modèles, retour d’expérience]
+    ARCH --> ANALYTICS["Statistiques, réutilisation<br/>modèles, retour d’expérience"]
 ```
 
 ---
@@ -62,7 +62,7 @@ flowchart LR
 
     subgraph Edge
         APIGW["API Gateway<br/>+ Auth (OIDC/SAML)"]
-        WAF[WAF / Reverse Proxy]
+        WAF["WAF / Reverse Proxy"]
     end
 
     FE --> WAF --> APIGW
@@ -76,7 +76,7 @@ flowchart LR
         RAG["Service Jurisprudence RAG<br/>(recherche & ranking)"]
         QA["Service Qualité<br/> & Contrôles automatiques"]
         EXPORT["Service Export<br/>(PDF/DOCX, signatures)"]
-        AUDIT[Journalisation & Traçabilité]
+        AUDIT["Journalisation & Traçabilité"]
     end
 
     APIGW --> DIR
@@ -105,17 +105,17 @@ flowchart LR
     LLM_ORCH --> AUDIT
 
     subgraph Data["Stockage & données"]
-        DB_CASES[(Base dossiers<br/>& métadonnées)]
-        DB_DOCS[(Stockage pièces<br/>(Obj. Storage, index plein texte))]
-        DB_JURIS[(Base jurisprudence<br/>+ index vecteur)]
-        DB_CONFIG[(Modèles, templates,<br/>règles métier)]
-        LOGS[(Logs, traces,<br/>metrics sécurité)]
+        DB_CASES["Base dossiers<br/>& métadonnées"]
+        DB_DOCS["Stockage pièces<br/>(Obj. Storage, index plein texte)"]
+        DB_JURIS["Base jurisprudence<br/>+ index vecteur"]
+        DB_CONFIG["Modèles, templates,<br/>règles métier"]
+        LOGS["Logs, traces,<br/>metrics sécurité"]
     end
 
-    DIR <---> DB_CASES
-    DMS <---> DB_DOCS
-    RAG <---> DB_JURIS
-    PLAN <---> DB_CONFIG
+    DIR --> DB_CASES
+    DMS --> DB_DOCS
+    RAG --> DB_JURIS
+    PLAN --> DB_CONFIG
     AUDIT --> LOGS
 ```
 
@@ -250,12 +250,12 @@ Je te propose un **MVP très réaliste**, que tu pourrais faire coder en quelque
 
 ```mermaid
 flowchart TB
-    A[1. Créer un dossier] --> B[2. Remplir formulaire structuré<br/>(faits, moyens, objectifs)]
-    B --> C[3. Générer plan standard<br/>(bouton "Proposer un plan")]
-    C --> D[4. Afficher/ajuster plan<br/>(checkbox pour sections)]
-    D --> E[5. Générer brouillon<br/>(bouton "Générer le mémoire")]
-    E --> F[6. Relecture & édition<br/>(éditeur texte)]
-    F --> G[7. Export .docx / .pdf]
+    A["1. Créer un dossier"] --> B["2. Remplir formulaire structuré<br/>(faits, moyens, objectifs)"]
+    B --> C["3. Générer plan standard<br/>(bouton « Proposer un plan »)"]
+    C --> D["4. Afficher/ajuster plan<br/>(checkbox pour sections)"]
+    D --> E["5. Générer brouillon<br/>(bouton « Générer le mémoire »)"]
+    E --> F["6. Relecture & édition<br/>(éditeur texte)"]
+    F --> G["7. Export .docx / .pdf"]
 ```
 
 ---
