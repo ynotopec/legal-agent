@@ -19,7 +19,7 @@ flowchart TB
 
     C -->|Transmet dossier, pièces, objectifs| UI["Portail web<br/>Mémoire en défense"]
 
-    UI -->|Formulaire structuré<br/>(identité, faits, demandes)| S1["Intake Dossier<br/>& Normalisation"]
+    UI -->|Formulaire structuré (identité, faits, demandes)| S1["Intake Dossier<br/>& Normalisation"]
     UI -->|Upload pièces (PDF, DOCX)| S2["Gestion documentaire<br/>& OCR"]
 
     S1 --> S3["Pré-analyse automatique<br/>(NLP + extraction de faits)"]
@@ -36,7 +36,7 @@ flowchart TB
     S7 --> S6
 
     S6 --> J_UI2["Interface juriste<br/>Brouillon annotable"]
-    J -->|Révisions, ajouts de moyens,<br/>réécriture humaine| J_UI2
+    J -->|Révisions, ajouts de moyens, réécriture humaine| J_UI2
 
     J_UI2 --> S8["Contrôles automatiques<br/>(cohérence, mentions obligatoires,<br/>références de pièces)"]
     S8 -->|Rapport de contrôle| J_UI2
