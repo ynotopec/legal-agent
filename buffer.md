@@ -186,3 +186,261 @@ Si tu veux, à la prochaine étape on peut :
 
 * soit **détailler chaque microservice** (API, payloads JSON typiques),
 * soit **penser directement en infra K8S** (namespaces, ingress, secrets, stockage, observabilité) pour en faire un blueprint d’implémentation.
+
+---
+
+Parfait, on descend d’un cran vers du concret 💼🛠️
+
+Je te propose un **MVP très réaliste**, que tu pourrais faire coder en quelques jours.
+
+---
+
+## 1. Objectif du MVP
+
+> **Générer un premier brouillon structuré de mémoire en défense à partir :**
+> – d’un formulaire structuré (faits + demandes du requérant)
+> – de quelques paramètres (juridiction, type de litige, ton souhaité)
+> 👉 puis laisser le juriste réécrire / corriger.
+
+**Important :**
+➡️ **Pas** de jurisprudence automatique dans le MVP (pour éviter les hallucinations et la complexité).
+➡️ LLM **interdit** d’inventer des références : il rédige “en général”, sans citer d’articles ni de décisions, ou bien avec des placeholders.
+
+---
+
+## 2. Fonctionnalités incluses / exclues
+
+### Inclus dans le MVP
+
+* Auth simple (ou même pas, si usage interne dev).
+* Création d’un “dossier” avec :
+
+  * Identification (nom du requérant, défendeur, référence interne).
+  * Type de contentieux (à limiter → ex : contentieux administratif / recours).
+  * Juridiction (ex : TA / CAA).
+  * Résumé des **faits** (zone de texte).
+  * Résumé des **moyens du requérant**.
+  * Objectif de la défense (rejet total, rejet partiel, transaction…).
+  * Ton souhaité : neutre / technique / pédagogique / offensif.
+* Génération automatique d’un **plan standard** de mémoire en défense.
+* Génération du **brouillon complet** par le LLM, avec les sections :
+
+  * Rappel de la procédure
+  * Rappel des faits
+  * Discussion en droit (réponse aux moyens)
+  * Conclusions (dispositif, rejets, etc.)
+* Interface pour :
+
+  * Afficher le brouillon
+  * Le modifier à la main (éditeur texte riche ou markdown)
+  * Sauvegarder les versions.
+* Export **en .docx** ou **.pdf** basique (template simple).
+
+### Exclu du MVP (pour plus tard)
+
+* Upload / analyse automatique des pièces.
+* Recherche jurisprudentielle automatique.
+* Gestion fine des droits / multi-organisations.
+* Historique avancé, diff, commentaires multi-utilisateurs.
+* Règles procédurales complexes (délais, exceptions de procédure, etc.).
+
+---
+
+## 3. UX globale (côté juriste)
+
+```mermaid
+flowchart TB
+    A[1. Créer un dossier] --> B[2. Remplir formulaire structuré<br>(faits, moyens, objectifs)]
+    B --> C[3. Générer plan standard<br>(bouton "Proposer un plan")]
+    C --> D[4. Afficher/ajuster plan<br>(checkbox pour sections)]
+    D --> E[5. Générer brouillon<br>(bouton "Générer le mémoire")]
+    E --> F[6. Relecture & édition<br>(éditeur texte)]
+    F --> G[7. Export .docx / .pdf]
+```
+
+---
+
+## 4. Architecture MVP (simple et déployable)
+
+On reste **sobre** :
+
+* 1 frontend (SPA légère)
+* 1 backend (API REST)
+* 1 base de données
+* 1 connecteur LLM (OpenAI-like ou local type vLLM / Ollama)
+
+```mermaid
+flowchart LR
+    FE[Frontend Web\n(React/Next/Vue)] --> API[Backend API\n(FastAPI / Node)]
+    API --> DB[(PostgreSQL)]
+    API --> LLM[Service LLM\n(OpenAI / Ollama / vLLM)]
+```
+
+### Backend – endpoints principaux
+
+* `POST /cases` : créer un dossier
+* `GET /cases/{id}` : récupérer un dossier
+* `POST /cases/{id}/plan` : générer un plan standard
+* `POST /cases/{id}/draft` : générer un brouillon à partir :
+
+  * du plan
+  * des faits
+  * des moyens
+  * des paramètres (juridiction, ton)
+* `PUT /cases/{id}/draft` : enregistrer la version éditée
+* `GET /cases/{id}/draft` : récupérer le brouillon
+* `POST /cases/{id}/export` : générer un .docx/.pdf
+
+---
+
+## 5. Modèle de données minimal
+
+En pseudo-JSON / SQL :
+
+```json
+Case {
+  id: string,
+  reference_interne: string,
+  requérant: string,
+  défendeur: string,
+  juridiction: "TA" | "CAA" | "CE",
+  type_contentieux: "excès de pouvoir" | "plein contentieux" | "autre",
+  resume_faits: string,
+  resume_moyens_requérant: string,
+  objectif_defense: "rejet_total" | "rejet_partiel" | "transaction",
+  ton_souhaite: "neutre" | "technique" | "pédagogique" | "offensif",
+  plan: PlanMemoire | null,
+  draft_ai: string | null,
+  draft_final: string | null,
+  created_at: datetime,
+  updated_at: datetime
+}
+```
+
+Le `PlanMemoire` peut être une simple liste ordonnée de sections :
+
+```json
+PlanMemoire {
+  sections: [
+    {key: "procedure", titre: "I. Rappel de la procédure", actif: true},
+    {key: "faits", titre: "II. Rappel des faits", actif: true},
+    {key: "discussion", titre: "III. Discussion", actif: true},
+    {key: "dispositif", titre: "IV. Conclusions", actif: true}
+  ]
+}
+```
+
+---
+
+## 6. Orchestration LLM (MVP)
+
+On fait **simple** :
+→ **un seul appel LLM** qui génère tout le mémoire d’un coup.
+
+### Prompt système (exemple)
+
+```text
+Tu es un juriste spécialisé en contentieux administratif.
+Tu aides à rédiger des mémoires en défense.
+
+Contraintes :
+- Tu NE DOIS PAS inventer de jurisprudence ni de références d'articles.
+- Tu peux parler de notions juridiques de manière générale.
+- Respecte strictement le plan fourni.
+- Style : clair, structuré, professionnel.
+- Langue : français juridique.
+
+Si une information manque, indique clairement qu'elle est à compléter par le juriste
+(ex : "[À compléter : ...]") plutôt que d'inventer.
+```
+
+### Prompt utilisateur (exemple)
+
+```json
+{
+  "juridiction": "TA",
+  "type_contentieux": "recours pour excès de pouvoir",
+  "ton_souhaite": "neutre",
+  "plan": [
+    "I. Rappel de la procédure",
+    "II. Rappel des faits",
+    "III. Discussion",
+    "IV. Conclusions"
+  ],
+  "faits": "Le requérant conteste l'arrêté du maire du 12 janvier 2024 ...",
+  "moyens_requérant": "1°) Incompétence de l'auteur de l'acte ; 2°) Vice de procédure ; 3°) Erreur manifeste d'appréciation.",
+  "objectif_defense": "rejet_total"
+}
+```
+
+Le backend transforme ça en **prompt texte** structuré, en insérant les sections.
+
+---
+
+## 7. Format de sortie LLM
+
+Pour faciliter l’édition côté frontend, tu peux demander un **format markdown** :
+
+```text
+# Mémoire en défense
+
+## I. Rappel de la procédure
+[Texte...]
+
+## II. Rappel des faits
+[Texte...]
+
+## III. Discussion
+### 1. Sur l'incompétence alléguée
+[Texte...]
+
+### 2. Sur le vice de procédure
+[Texte...]
+
+### 3. Sur l'erreur manifeste d'appréciation
+[Texte...]
+
+## IV. Conclusions
+[Texte...]
+```
+
+Dans le MVP, tu gardes juste une **zone d’édition markdown** avec prévisualisation, ce qui simplifie beaucoup l’UI et l’export.
+
+---
+
+## 8. Export simple .docx / .pdf
+
+MVP réaliste :
+
+* Backend :
+
+  * Convertir markdown → HTML → DOCX (lib python `python-docx` par ex.).
+  * Puis, éventuellement, DOCX → PDF via LibreOffice en CLI *ou* un service externe.
+* Template minimal :
+
+  * En-tête avec :
+
+    * juridiction
+    * parties
+    * référence dossier
+
+Pas besoin d’un truc parfait visuellement, juste **propre et imprimable**.
+
+---
+
+## 9. Roadmap mini (MVP → v2)
+
+| Version         | Fonctionnalités clés                                                                                                            |
+| --------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| v0              | Formulaire + LLM génère un mémoire brut (une page, pas forcément très structuré)                                                |
+| v1 (MVP décrit) | Plan structuré, sections, édition markdown, export docx/pdf                                                                     |
+| v2              | Ajout upload de pièces + champs “résumé de pièce” + premiers contrôles automatiques (présence des mentions, longueur max, etc.) |
+| v3              | RAG jurisprudentiel, citations contrôlées, gestion multi-utilisateurs/droits                                                    |
+
+---
+
+Si tu veux, je peux te proposer **dans un message suivant** :
+
+* soit un **exemple d’API FastAPI complet** (modèles Pydantic + routes) pour ce MVP,
+* soit un **schema YAML OpenAPI** minimal que tu pourrais brancher directement dans un générateur de client / front.
+
