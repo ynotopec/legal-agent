@@ -32,6 +32,14 @@ This project provides an open-source FastAPI service to manage legal disputes. I
 Environment variables can override defaults defined in `app/settings.py`:
 - `DATABASE_URL`: Database connection string (default `sqlite+aiosqlite:///./legal_agent.db`).
 - `DB_ECHO`: Set to `true` to enable SQL logging.
+- `API_KEYS`: Comma-separated allowed API keys. When set, all `/cases` routes require the `X-API-Key` header. When empty (default), auth is disabled — a warning is printed at startup; do not expose the API publicly in that mode.
+- `UPLOAD_DIR`: Directory where multipart uploads are stored (default `./uploads`).
+- `MAX_UPLOAD_MB`: Maximum accepted upload size in MB (default `10`; larger files are rejected with HTTP 413).
+
+## API notes
+- List endpoints accept `skip` and `limit` query parameters (`limit` defaults to 100, max 100).
+- Multipart uploads (`POST /cases/{case_id}/documents/upload`) are persisted to `UPLOAD_DIR/{case_id}/` with sanitized filenames (path components stripped, unsafe characters replaced).
+- `/health` is always public (for probes); all other routes enforce the API key when `API_KEYS` is set.
 
 ## Example workflow
 1. Create a case via `POST /cases` with title, description, jurisdiction, and status.

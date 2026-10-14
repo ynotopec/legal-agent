@@ -1,4 +1,6 @@
 __pycache__/
 *.pyc
 legal_agent.db
+test.db
+uploads/
 .env
