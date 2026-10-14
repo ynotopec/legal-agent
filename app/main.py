@@ -1,7 +1,19 @@
+import re
+from contextlib import asynccontextmanager
 from datetime import datetime
+from pathlib import Path
 from typing import List
 
-from fastapi import Depends, FastAPI, HTTPException, UploadFile, status
+from fastapi import (
+    APIRouter,
+    Depends,
+    FastAPI,
+    Header,
+    HTTPException,
+    Query,
+    UploadFile,
+    status,
+)
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
@@ -27,39 +39,83 @@ from .models import (
     TaskCreate,
     TaskRead,
 )
+from .settings import settings
 
-app = FastAPI(title="Legal Case Management API", version="0.1.0")
+MAX_UPLOAD_BYTES = settings.max_upload_mb * 1024 * 1024
 
 
-@app.on_event("startup")
-async def on_startup() -> None:
+def _sanitize_filename(name: str) -> str:
+    """Strip path components and neutralize unsafe characters."""
+    name = (name or "").replace("\\", "/").split("/")[-1].strip()
+    name = re.sub(r"[^\w\-. ]", "_", name)
+    return name[:255] or "upload"
+
+
+def require_api_key(x_api_key: str = Header(default="")) -> None:
+    """Enforce API key auth when API_KEYS is set; no-op in dev mode."""
+    if not settings.api_keys:
+        return
+    allowed = {k.strip() for k in settings.api_keys.split(",") if k.strip()}
+    if x_api_key not in allowed:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid API key"
+        )
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
     await init_db()
+    if not settings.api_keys:
+        print(
+            "WARNING: API_KEYS is not set — the API is unauthenticated. "
+            "Do not expose it publicly.",
+            flush=True,
+        )
+    yield
 
 
-@app.post("/cases", response_model=CaseRead, status_code=status.HTTP_201_CREATED)
-async def create_case(*, payload: CaseCreate, session: AsyncSession = Depends(get_session)) -> CaseRead:
-    case = Case.from_orm(payload)
+router = APIRouter(dependencies=[Depends(require_api_key)])
+
+app = FastAPI(
+    title="Legal Case Management API",
+    version="0.1.0",
+    lifespan=lifespan,
+)
+
+
+@router.post("/cases", response_model=CaseRead, status_code=status.HTTP_201_CREATED)
+async def create_case(
+    *, payload: CaseCreate, session: AsyncSession = Depends(get_session)
+) -> CaseRead:
+    case = Case.model_validate(payload)
     session.add(case)
     await session.commit()
     await session.refresh(case)
     return case
 
 
-@app.get("/cases", response_model=List[CaseRead])
-async def list_cases(session: AsyncSession = Depends(get_session)) -> List[CaseRead]:
-    result = await session.exec(select(Case))
+@router.get("/cases", response_model=List[CaseRead])
+async def list_cases(
+    *,
+    skip: int = Query(0, ge=0),
+    limit: int = Query(100, ge=1, le=100),
+    session: AsyncSession = Depends(get_session),
+) -> List[CaseRead]:
+    result = await session.exec(select(Case).offset(skip).limit(limit))
     return result.all()
 
 
-@app.get("/cases/{case_id}", response_model=CaseRead)
-async def get_case(case_id: int, session: AsyncSession = Depends(get_session)) -> CaseRead:
+@router.get("/cases/{case_id}", response_model=CaseRead)
+async def get_case(
+    case_id: int, session: AsyncSession = Depends(get_session)
+) -> CaseRead:
     case = await session.get(Case, case_id)
     if not case:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Case not found")
     return case
 
 
-@app.patch("/cases/{case_id}", response_model=CaseRead)
+@router.patch("/cases/{case_id}", response_model=CaseRead)
 async def update_case(
     case_id: int, *, payload: CaseUpdate, session: AsyncSession = Depends(get_session)
 ) -> CaseRead:
@@ -67,7 +123,7 @@ async def update_case(
     if not case:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Case not found")
 
-    update_data = payload.dict(exclude_unset=True)
+    update_data = payload.model_dump(exclude_unset=True)
     for key, value in update_data.items():
         setattr(case, key, value)
     case.updated_at = datetime.utcnow()
@@ -78,8 +134,10 @@ async def update_case(
     return case
 
 
-@app.delete("/cases/{case_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_case(case_id: int, session: AsyncSession = Depends(get_session)) -> None:
+@router.delete("/cases/{case_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_case(
+    case_id: int, session: AsyncSession = Depends(get_session)
+) -> None:
     case = await session.get(Case, case_id)
     if not case:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Case not found")
@@ -87,7 +145,9 @@ async def delete_case(case_id: int, session: AsyncSession = Depends(get_session)
     await session.commit()
 
 
-@app.post("/cases/{case_id}/parties", response_model=PartyRead, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/cases/{case_id}/parties", response_model=PartyRead, status_code=status.HTTP_201_CREATED
+)
 async def add_party(
     case_id: int, *, payload: PartyCreate, session: AsyncSession = Depends(get_session)
 ) -> PartyRead:
@@ -98,20 +158,32 @@ async def add_party(
     if payload.case_id != case_id:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Case ID mismatch")
 
-    party = Party.from_orm(payload)
+    party = Party.model_validate(payload)
     session.add(party)
     await session.commit()
     await session.refresh(party)
     return party
 
 
-@app.get("/cases/{case_id}/parties", response_model=List[PartyRead])
-async def list_parties(case_id: int, session: AsyncSession = Depends(get_session)) -> List[PartyRead]:
-    result = await session.exec(select(Party).where(Party.case_id == case_id))
+@router.get("/cases/{case_id}/parties", response_model=List[PartyRead])
+async def list_parties(
+    case_id: int,
+    *,
+    skip: int = Query(0, ge=0),
+    limit: int = Query(100, ge=1, le=100),
+    session: AsyncSession = Depends(get_session),
+) -> List[PartyRead]:
+    result = await session.exec(
+        select(Party).where(Party.case_id == case_id).offset(skip).limit(limit)
+    )
     return result.all()
 
 
-@app.post("/cases/{case_id}/documents", response_model=DocumentRead, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/cases/{case_id}/documents",
+    response_model=DocumentRead,
+    status_code=status.HTTP_201_CREATED,
+)
 async def upload_document(
     case_id: int,
     payload: DocumentCreate,
@@ -124,20 +196,32 @@ async def upload_document(
     if payload.case_id != case_id:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Case ID mismatch")
 
-    document = Document.from_orm(payload)
+    document = Document.model_validate(payload)
     session.add(document)
     await session.commit()
     await session.refresh(document)
     return document
 
 
-@app.get("/cases/{case_id}/documents", response_model=List[DocumentRead])
-async def list_documents(case_id: int, session: AsyncSession = Depends(get_session)) -> List[DocumentRead]:
-    result = await session.exec(select(Document).where(Document.case_id == case_id))
+@router.get("/cases/{case_id}/documents", response_model=List[DocumentRead])
+async def list_documents(
+    case_id: int,
+    *,
+    skip: int = Query(0, ge=0),
+    limit: int = Query(100, ge=1, le=100),
+    session: AsyncSession = Depends(get_session),
+) -> List[DocumentRead]:
+    result = await session.exec(
+        select(Document).where(Document.case_id == case_id).offset(skip).limit(limit)
+    )
     return result.all()
 
 
-@app.post("/cases/{case_id}/hearings", response_model=HearingRead, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/cases/{case_id}/hearings",
+    response_model=HearingRead,
+    status_code=status.HTTP_201_CREATED,
+)
 async def add_hearing(
     case_id: int, *, payload: HearingCreate, session: AsyncSession = Depends(get_session)
 ) -> HearingRead:
@@ -148,20 +232,30 @@ async def add_hearing(
     if payload.case_id != case_id:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Case ID mismatch")
 
-    hearing = Hearing.from_orm(payload)
+    hearing = Hearing.model_validate(payload)
     session.add(hearing)
     await session.commit()
     await session.refresh(hearing)
     return hearing
 
 
-@app.get("/cases/{case_id}/hearings", response_model=List[HearingRead])
-async def list_hearings(case_id: int, session: AsyncSession = Depends(get_session)) -> List[HearingRead]:
-    result = await session.exec(select(Hearing).where(Hearing.case_id == case_id))
+@router.get("/cases/{case_id}/hearings", response_model=List[HearingRead])
+async def list_hearings(
+    case_id: int,
+    *,
+    skip: int = Query(0, ge=0),
+    limit: int = Query(100, ge=1, le=100),
+    session: AsyncSession = Depends(get_session),
+) -> List[HearingRead]:
+    result = await session.exec(
+        select(Hearing).where(Hearing.case_id == case_id).offset(skip).limit(limit)
+    )
     return result.all()
 
 
-@app.post("/cases/{case_id}/tasks", response_model=TaskRead, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/cases/{case_id}/tasks", response_model=TaskRead, status_code=status.HTTP_201_CREATED
+)
 async def add_task(
     case_id: int, *, payload: TaskCreate, session: AsyncSession = Depends(get_session)
 ) -> TaskRead:
@@ -172,20 +266,32 @@ async def add_task(
     if payload.case_id != case_id:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Case ID mismatch")
 
-    task = Task.from_orm(payload)
+    task = Task.model_validate(payload)
     session.add(task)
     await session.commit()
     await session.refresh(task)
     return task
 
 
-@app.get("/cases/{case_id}/tasks", response_model=List[TaskRead])
-async def list_tasks(case_id: int, session: AsyncSession = Depends(get_session)) -> List[TaskRead]:
-    result = await session.exec(select(Task).where(Task.case_id == case_id))
+@router.get("/cases/{case_id}/tasks", response_model=List[TaskRead])
+async def list_tasks(
+    case_id: int,
+    *,
+    skip: int = Query(0, ge=0),
+    limit: int = Query(100, ge=1, le=100),
+    session: AsyncSession = Depends(get_session),
+) -> List[TaskRead]:
+    result = await session.exec(
+        select(Task).where(Task.case_id == case_id).offset(skip).limit(limit)
+    )
     return result.all()
 
 
-@app.post("/cases/{case_id}/documents/upload", response_model=DocumentRead, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/cases/{case_id}/documents/upload",
+    response_model=DocumentRead,
+    status_code=status.HTTP_201_CREATED,
+)
 async def upload_document_file(
     case_id: int,
     file: UploadFile,
@@ -195,10 +301,26 @@ async def upload_document_file(
     if not case:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Case not found")
 
+    filename = _sanitize_filename(file.filename or "")
+    content = await file.read()
+    if len(content) > MAX_UPLOAD_BYTES:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail=f"File too large (max {settings.max_upload_mb} MB)",
+        )
+
+    dest_dir = Path(settings.upload_dir) / str(case_id)
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    dest = dest_dir / filename
+    if dest.exists():
+        stamp = datetime.utcnow().strftime("%Y%m%d%H%M%S")
+        dest = dest_dir / f"{dest.stem}-{stamp}{dest.suffix}"
+    dest.write_bytes(content)
+
     document = Document(
-        filename=file.filename,
+        filename=filename,
         content_type=file.content_type or "application/octet-stream",
-        description="Uploaded via multipart",
+        description=f"Uploaded via multipart ({len(content)} bytes)",
         case_id=case_id,
     )
     session.add(document)
@@ -207,7 +329,7 @@ async def upload_document_file(
     return document
 
 
-@app.get("/cases/{case_id}/defense-dossier", response_model=DefenseDossier)
+@router.get("/cases/{case_id}/defense-dossier", response_model=DefenseDossier)
 async def build_defense_dossier(
     case_id: int, session: AsyncSession = Depends(get_session)
 ) -> DefenseDossier:
@@ -262,3 +384,6 @@ async def build_defense_dossier(
 @app.get("/health", status_code=status.HTTP_200_OK)
 async def healthcheck() -> dict[str, str]:
     return {"status": "ok"}
+
+
+app.include_router(router)
